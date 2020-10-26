@@ -4,6 +4,7 @@ defmodule Mix.Tasks.Coveralls do
   coveralls.io from local server.
   """
   use Mix.Task
+  require Logger
 
   @shortdoc "Display the test coverage"
   @preferred_cli_env :test
@@ -33,7 +34,7 @@ defmodule Mix.Tasks.Coveralls do
         message: "Please specify 'test_coverage: [tool: ExCoveralls]' in the 'project' section of mix.exs"
     end
 
-    switches = [filter: :string, umbrella: :boolean, verbose: :boolean, pro: :boolean, parallel: :boolean, sort: :string, output_dir: :string]
+    switches = [filter: :string, umbrella: :boolean, verbose: :boolean, pro: :boolean, parallel: :boolean, sort: :string, output_dir: :string, number: :string]
     aliases = [f: :filter, u: :umbrella, v: :verbose, o: :output_dir]
     {args, common_options} = parse_common_options(args, switches: switches, aliases: aliases)
     all_options = options ++ common_options
@@ -47,6 +48,7 @@ defmodule Mix.Tasks.Coveralls do
         all_options
       end
 
+    Logger.warn("all_options:#{inspect(all_options)}")
     ExCoveralls.ConfServer.start
     ExCoveralls.ConfServer.set(all_options ++ [args: args])
     ExCoveralls.StatServer.start
@@ -64,20 +66,24 @@ defmodule Mix.Tasks.Coveralls do
     {common_options, _remaining, _invalid} = OptionParser.parse(args, common_options)
 
     # the switches that excoveralls supports
-    supported_switches = Enum.map(Keyword.keys(common_switches), fn(s) -> String.replace("--#{s}", "_", "-") end)
-      ++ Enum.map(Keyword.keys(common_aliases), fn(s) -> "-#{s}" end)
+    supported_switches = Enum.map(Keyword.keys(common_switches), fn (s) -> String.replace("--#{s}", "_", "-") end)
+    ++ Enum.map(Keyword.keys(common_aliases), fn (s) -> "-#{s}" end)
+    Logger.warn("parse_common_options:               args:#{inspect(args)}")
+    Logger.warn("parse_common_options: supported_switches:#{inspect(supported_switches)}")
 
     # Get the remaining args to pass onto cover, excluding ExCoveralls-specific args.
     # Not using OptionParser for this because it splits things up in unfortunate ways.
-    {remaining, _} = List.foldl(args, {[], nil}, fn(arg, {acc, last}) ->
-      cond do
-      # don't include switches for ExCoveralls
-      Enum.member?(supported_switches, arg) -> {acc, arg}
-      # also drop any values that follow ExCoveralls switches
-      !String.starts_with?(arg, "-") && Enum.member?(supported_switches, last) -> {acc, nil}
-      # leaving just the switches and values intended for cover
-      true -> {acc ++ [arg], nil}
-      end
+    {remaining, _} = List.foldl(
+      args, {[], nil},
+      fn (arg, {acc, last}) ->
+        cond do
+          # don't include switches for ExCoveralls
+          Enum.member?(supported_switches, arg) -> {acc, arg}
+          # also drop any values that follow ExCoveralls switches
+          !String.starts_with?(arg, "-") && Enum.member?(supported_switches, last) -> {acc, nil}
+          # leaving just the switches and values intended for cover
+          true -> {acc ++ [arg], nil}
+        end
     end)
 
     {remaining, common_options}
@@ -221,6 +227,7 @@ defmodule Mix.Tasks.Coveralls do
     coveralls.io from the local server.
     """
     use Mix.Task
+    require Logger
 
     @shortdoc "Post the test coverage to coveralls"
     @default_service_name "excoveralls"
@@ -231,18 +238,22 @@ defmodule Mix.Tasks.Coveralls do
       aliases = [f: :filter, u: :umbrella, v: :verbose]
       {remaining, options} = Mix.Tasks.Coveralls.parse_common_options(
         args,
-        switches: switches ++ [sha: :string, token: :string, committer: :string, branch: :string, message: :string, name: :string],
+        switches: switches ++ [sha: :string, token: :string, committer: :string, branch: :string, message: :string, name: :string, number: :string],
         aliases: aliases ++ [n: :name, b: :branch, c: :committer, m: :message, s: :sha, t: :token]
       )
+      Logger.warn("options:#{inspect(options)}")
+      Logger.warn("remaining:#{inspect(remaining)}")
 
       Mix.Tasks.Coveralls.do_run(remaining,
         [ type:         "post",
           endpoint:     Application.get_env(:excoveralls, :endpoint),
           token:        extract_token(options),
           service_name: extract_service_name(options),
+          service_number: options[:number] || "",
           branch:       options[:branch] || "",
           committer:    options[:committer] || "",
           sha:          options[:sha] || "",
+          parallel:     options[:parallel] || "",
           message:      options[:message] || "[no commit message]",
           umbrella:     options[:umbrella],
           verbose:      options[:verbose]
